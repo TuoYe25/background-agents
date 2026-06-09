@@ -15,6 +15,7 @@ import {
 } from "@open-inspect/shared";
 
 const GLOBAL_SCOPE = "__global__";
+type ResourceField = "cpuCores" | "memoryMib";
 
 interface GlobalSettingsResponse {
   integrationId: string;
@@ -35,6 +36,94 @@ function isValidPort(value: string): boolean {
 
 function isPositiveInteger(value: string): boolean {
   return /^\d+$/.test(value) && Number(value) >= 1;
+}
+
+function isValidCpuCores(value: string): boolean {
+  if (!/^\d*\.?\d+$/.test(value)) return false;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
+function isValidMemoryMib(value: string): boolean {
+  if (!/^\d+$/.test(value)) return false;
+  return Number(value) >= 1;
+}
+
+function hasOwnResourceSetting(
+  settings: SandboxSettings | null | undefined,
+  field: ResourceField
+): boolean {
+  return !!settings && Object.prototype.hasOwnProperty.call(settings, field);
+}
+
+function getResourceSetting(
+  settings: SandboxSettings | null | undefined,
+  field: ResourceField
+): number | null | undefined {
+  const value = settings?.[field];
+  return typeof value === "number" || value === null ? value : undefined;
+}
+
+function resolveResourceSetting(
+  isGlobal: boolean,
+  globalDefaults: SandboxSettings | undefined,
+  repoSettings: SandboxSettings | null | undefined,
+  field: ResourceField
+): {
+  displayValue: number | undefined;
+  repoHasOverride: boolean;
+  repoValue: number | null | undefined;
+} {
+  if (isGlobal) {
+    const globalValue = getResourceSetting(globalDefaults, field);
+    return {
+      displayValue: typeof globalValue === "number" ? globalValue : undefined,
+      repoHasOverride: false,
+      repoValue: undefined,
+    };
+  }
+
+  if (hasOwnResourceSetting(repoSettings, field)) {
+    const repoValue = getResourceSetting(repoSettings, field);
+    return {
+      displayValue: typeof repoValue === "number" ? repoValue : undefined,
+      repoHasOverride: true,
+      repoValue,
+    };
+  }
+
+  const inheritedValue = getResourceSetting(globalDefaults, field);
+  return {
+    displayValue: typeof inheritedValue === "number" ? inheritedValue : undefined,
+    repoHasOverride: false,
+    repoValue: undefined,
+  };
+}
+
+function applyResourcePayload(
+  payload: SandboxSettings,
+  field: ResourceField,
+  trimmedValue: string,
+  editedValue: string | null,
+  isGlobal: boolean,
+  repoHasOverride: boolean,
+  repoValue: number | null | undefined
+): void {
+  if (isGlobal) {
+    if (trimmedValue !== "") {
+      payload[field] = Number(trimmedValue);
+    }
+    return;
+  }
+
+  if (editedValue !== null) {
+    payload[field] = trimmedValue === "" ? null : Number(trimmedValue);
+    return;
+  }
+
+  if (repoHasOverride) {
+    payload[field] = repoValue ?? null;
+  }
 }
 
 function SandboxSettingsEditor({
@@ -86,10 +175,17 @@ function SandboxSettingsEditor({
       globalDefaults?.maxTotalChildSessions ??
       DEFAULT_MAX_TOTAL_CHILD_SESSIONS);
 
+  const cpuSetting = resolveResourceSetting(isGlobal, globalDefaults, repoSettings, "cpuCores");
+  const memorySetting = resolveResourceSetting(isGlobal, globalDefaults, repoSettings, "memoryMib");
+  const currentCpuCores = cpuSetting.displayValue;
+  const currentMemoryMib = memorySetting.displayValue;
+
   const [portRows, setPortRows] = useState<string[] | null>(null);
   const [terminalEnabled, setTerminalEnabled] = useState<boolean | null>(null);
   const [maxConcurrentChildSessions, setMaxConcurrentChildSessions] = useState<string | null>(null);
   const [maxTotalChildSessions, setMaxTotalChildSessions] = useState<string | null>(null);
+  const [cpuCores, setCpuCores] = useState<string | null>(null);
+  const [memoryMib, setMemoryMib] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -103,6 +199,10 @@ function SandboxSettingsEditor({
     maxConcurrentChildSessions ?? String(currentMaxConcurrentChildSessions);
   const resolvedMaxTotalChildSessions =
     maxTotalChildSessions ?? String(currentMaxTotalChildSessions);
+  const resolvedCpuCores =
+    cpuCores ?? (currentCpuCores !== undefined ? String(currentCpuCores) : "");
+  const resolvedMemoryMib =
+    memoryMib ?? (currentMemoryMib !== undefined ? String(currentMemoryMib) : "");
 
   const handleAddRow = () => {
     if (rows.length >= MAX_TUNNEL_PORTS) return;
@@ -148,6 +248,18 @@ function SandboxSettingsEditor({
       return;
     }
 
+    const trimmedCpu = resolvedCpuCores.trim();
+    if (trimmedCpu !== "" && !isValidCpuCores(trimmedCpu)) {
+      setError("CPU cores must be a positive number.");
+      return;
+    }
+
+    const trimmedMemory = resolvedMemoryMib.trim();
+    if (trimmedMemory !== "" && !isValidMemoryMib(trimmedMemory)) {
+      setError("Memory must be a positive whole number of MiB.");
+      return;
+    }
+
     setSaving(true);
     try {
       const existingEnabledRepos = isGlobal
@@ -171,6 +283,24 @@ function SandboxSettingsEditor({
       ) {
         settingsPayload.maxTotalChildSessions = Number(resolvedMaxTotalChildSessions);
       }
+      applyResourcePayload(
+        settingsPayload,
+        "cpuCores",
+        trimmedCpu,
+        cpuCores,
+        isGlobal,
+        cpuSetting.repoHasOverride,
+        cpuSetting.repoValue
+      );
+      applyResourcePayload(
+        settingsPayload,
+        "memoryMib",
+        trimmedMemory,
+        memoryMib,
+        isGlobal,
+        memorySetting.repoHasOverride,
+        memorySetting.repoValue
+      );
       const body = isGlobal
         ? { settings: { defaults: settingsPayload, enabledRepos: existingEnabledRepos } }
         : { settings: settingsPayload };
@@ -191,6 +321,8 @@ function SandboxSettingsEditor({
       setTerminalEnabled(null);
       setMaxConcurrentChildSessions(null);
       setMaxTotalChildSessions(null);
+      setCpuCores(null);
+      setMemoryMib(null);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
     } catch (e) {
@@ -207,10 +339,18 @@ function SandboxSettingsEditor({
     resolvedTerminalEnabled,
     resolvedMaxConcurrentChildSessions,
     resolvedMaxTotalChildSessions,
+    resolvedCpuCores,
+    resolvedMemoryMib,
+    cpuCores,
+    memoryMib,
     maxConcurrentChildSessions,
     maxTotalChildSessions,
     repoSettings?.maxConcurrentChildSessions,
     repoSettings?.maxTotalChildSessions,
+    cpuSetting.repoHasOverride,
+    cpuSetting.repoValue,
+    memorySetting.repoHasOverride,
+    memorySetting.repoValue,
   ]);
 
   const hasPortChanges =
@@ -223,8 +363,17 @@ function SandboxSettingsEditor({
   const hasTotalLimitChange =
     maxTotalChildSessions !== null &&
     maxTotalChildSessions !== String(currentMaxTotalChildSessions);
+  const currentCpuCoresString = currentCpuCores !== undefined ? String(currentCpuCores) : "";
+  const currentMemoryMibString = currentMemoryMib !== undefined ? String(currentMemoryMib) : "";
+  const hasCpuChange = cpuCores !== null && cpuCores.trim() !== currentCpuCoresString;
+  const hasMemoryChange = memoryMib !== null && memoryMib.trim() !== currentMemoryMibString;
   const hasChanges =
-    hasPortChanges || hasTerminalChange || hasConcurrentLimitChange || hasTotalLimitChange;
+    hasPortChanges ||
+    hasTerminalChange ||
+    hasConcurrentLimitChange ||
+    hasTotalLimitChange ||
+    hasCpuChange ||
+    hasMemoryChange;
 
   if (isLoading || isLoadingGlobal) {
     return <p className="text-sm text-muted-foreground">Loading...</p>;
@@ -341,6 +490,49 @@ function SandboxSettingsEditor({
               inputMode="numeric"
               value={resolvedMaxTotalChildSessions}
               onChange={(e) => setMaxTotalChildSessions(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-1.5">Resources</label>
+        <p className="text-xs text-muted-foreground mb-2">
+          Reserve CPU and memory for each sandbox. Leave blank to use the provider&apos;s default
+          reservation.
+        </p>
+        <div className="grid gap-3 max-w-sm sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="sandbox-cpu-cores"
+              className="block text-xs font-medium text-muted-foreground mb-1"
+            >
+              CPU cores
+            </label>
+            <Input
+              id="sandbox-cpu-cores"
+              type="text"
+              inputMode="decimal"
+              value={resolvedCpuCores}
+              onChange={(e) => setCpuCores(e.target.value)}
+              placeholder="provider default"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="sandbox-memory-mib"
+              className="block text-xs font-medium text-muted-foreground mb-1"
+            >
+              Memory (MiB)
+            </label>
+            <Input
+              id="sandbox-memory-mib"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              value={resolvedMemoryMib}
+              onChange={(e) => setMemoryMib(e.target.value)}
+              placeholder="provider default"
             />
           </div>
         </div>
