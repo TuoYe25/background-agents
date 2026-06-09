@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-sandbox-manager"
+version = "1.0.0"
+description = "Local sandbox manager for Open-Inspect"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.2",
+    "pydantic>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.scripts]
+local-sandbox-manager = "local_sandbox_manager.main:main"
+
+[tool.uv]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.2",
+    "pydantic>=2.0.0",
+    "sqlalchemy>=2.0.0",
+]

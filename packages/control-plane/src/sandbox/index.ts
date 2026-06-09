@@ -76,8 +76,21 @@ export {
   resolveSandboxBackendName,
   isModalSandboxBackend,
   supportsRepoImageBackend,
+  isLocalSandboxBackend,
   type SandboxBackendName,
 } from "./provider-name";
+
+// Local provider
+export {
+  LocalSandboxProvider,
+  createLocalProvider,
+  type LocalProviderConfig,
+  type LocalSandboxClient,
+} from "./providers/local/provider";
+export {
+  LocalSandboxHttpClient,
+  createLocalSandboxClient,
+} from "./providers/local/client";
 
 // Lifecycle decisions
 export {
