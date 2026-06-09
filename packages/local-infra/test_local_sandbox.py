@@ -13,7 +13,7 @@ import time
 
 # Configuration
 API_KEY = os.environ.get("LOCAL_SANDBOX_API_KEY", "local-dev-key")
-BASE_URL = "http://localhost:8789"
+BASE_URL = "http://localhost:8788"
 
 headers = {
     "Authorization": f"Bearer {API_KEY}",

@@ -620,6 +620,39 @@ async def list_sandboxes(
     }
 
 
+@app.delete("/cleanup-sandboxes")
+async def cleanup_sandboxes(
+    credentials: HTTPAuthorizationCredentials = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    import shutil
+    
+    sandboxes = db.query(SandboxDB).all()
+    deleted_count = 0
+    
+    for sb in sandboxes:
+        if sb.workspace_path:
+            try:
+                shutil.rmtree(sb.workspace_path, ignore_errors=True)
+            except Exception:
+                pass
+        db.delete(sb)
+        deleted_count += 1
+    
+    snapshots = db.query(SnapshotDB).all()
+    for snap in snapshots:
+        if snap.snapshot_path:
+            try:
+                shutil.rmtree(snap.snapshot_path, ignore_errors=True)
+            except Exception:
+                pass
+        db.delete(snap)
+    
+    db.commit()
+    
+    return {"success": True, "deleted_sandboxes": deleted_count}
+
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(process_queue())
