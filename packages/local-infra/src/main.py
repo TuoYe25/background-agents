@@ -22,6 +22,7 @@ import os
 import subprocess
 import tempfile
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -101,8 +102,6 @@ class SnapshotDB(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# FastAPI app
-app = FastAPI(title="Local Sandbox Manager", version="1.0")
 security = HTTPBearer()
 
 
@@ -654,11 +653,20 @@ async def cleanup_sandboxes(
     return {"success": True, "deleted_sandboxes": deleted_count}
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: create the queue processor task
     asyncio.create_task(process_queue())
+    yield
+    # Shutdown: cleanup if needed
+    pass
+
+
+# Create FastAPI app with lifespan
+app = FastAPI(title="Local Sandbox Manager", version="1.0", lifespan=lifespan)
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("LOCAL_SANDBOX_PORT", "8788"))
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    # Bind to 0.0.0.0 to accept connections from any network interface
+    uvicorn.run(app, host="0.0.0.0", port=port)
