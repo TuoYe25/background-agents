@@ -379,6 +379,9 @@ async def create_sandbox(
 ):
     provider_object_id = str(uuid.uuid4())
     
+    workspace_path = WORKSPACES_DIR / request.sandbox_id
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    
     db_sandbox = SandboxDB(
         id=str(uuid.uuid4()),
         provider_object_id=provider_object_id,
@@ -389,6 +392,7 @@ async def create_sandbox(
         status="spawning",
         created_at=datetime.now(),
         updated_at=datetime.now(),
+        workspace_path=str(workspace_path),
     )
     db.add(db_sandbox)
     db.commit()
