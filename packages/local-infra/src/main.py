@@ -379,6 +379,20 @@ async def create_sandbox(
 ):
     provider_object_id = str(uuid.uuid4())
     
+    db_sandbox = SandboxDB(
+        id=str(uuid.uuid4()),
+        provider_object_id=provider_object_id,
+        session_id=request.session_id,
+        sandbox_id=request.sandbox_id,
+        repo_owner=request.repo_owner,
+        repo_name=request.repo_name,
+        status="spawning",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    db.add(db_sandbox)
+    db.commit()
+    
     await sandbox_queue.put({
         "provider_object_id": provider_object_id,
         "session_id": request.session_id,
