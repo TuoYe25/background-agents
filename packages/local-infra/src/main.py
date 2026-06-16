@@ -102,6 +102,18 @@ class SnapshotDB(Base):
 
 Base.metadata.create_all(bind=engine)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: create the queue processor task
+    asyncio.create_task(process_queue())
+    yield
+    # Shutdown: cleanup if needed
+    pass
+
+
+# FastAPI app with lifespan
+app = FastAPI(title="Local Sandbox Manager", version="1.0", lifespan=lifespan)
 security = HTTPBearer()
 
 
@@ -651,19 +663,6 @@ async def cleanup_sandboxes(
     db.commit()
     
     return {"success": True, "deleted_sandboxes": deleted_count}
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: create the queue processor task
-    asyncio.create_task(process_queue())
-    yield
-    # Shutdown: cleanup if needed
-    pass
-
-
-# Create FastAPI app with lifespan
-app = FastAPI(title="Local Sandbox Manager", version="1.0", lifespan=lifespan)
 
 
 if __name__ == "__main__":
