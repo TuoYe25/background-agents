@@ -106,9 +106,13 @@ Base.metadata.create_all(bind=engine)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: create the queue processor task
-    asyncio.create_task(process_queue())
+    print("Starting queue processor...")
+    task = asyncio.create_task(process_queue())
+    print(f"Queue processor task created: {task}")
     yield
     # Shutdown: cleanup if needed
+    print("Shutting down...")
+    task.cancel()
     pass
 
 
@@ -202,18 +206,31 @@ async def process_queue():
     """Process sandbox creation requests from the queue."""
     global sandbox_queue
     sandbox_queue = asyncio.Queue(maxsize=100)
+    print("Queue processor started, waiting for requests...")
     
     while True:
-        while len(active_sandboxes) >= MAX_CONCURRENT_SANDBOXES:
-            await asyncio.sleep(1)
-        
-        request = await sandbox_queue.get()
         try:
-            await execute_sandbox_creation(request)
+            while len(active_sandboxes) >= MAX_CONCURRENT_SANDBOXES:
+                print(f"Max concurrent sandboxes reached ({len(active_sandboxes)}), waiting...")
+                await asyncio.sleep(1)
+            
+            print("Waiting for sandbox request...")
+            request = await sandbox_queue.get()
+            print(f"Received sandbox request: {request.get('sandbox_id', 'unknown')}")
+            
+            try:
+                await execute_sandbox_creation(request)
+            except Exception as e:
+                print(f"Error processing sandbox creation: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                sandbox_queue.task_done()
         except Exception as e:
-            print(f"Error processing sandbox creation: {e}")
-        finally:
-            sandbox_queue.task_done()
+            print(f"Error in queue processor loop: {e}")
+            import traceback
+            traceback.print_exc()
+            await asyncio.sleep(1)
 
 
 async def execute_sandbox_creation(request: dict):
@@ -230,6 +247,7 @@ async def execute_sandbox_creation(request: dict):
 async def create_sandbox_internal(request: dict):
     """Internal sandbox creation logic."""
     db = SessionLocal()
+    db_sandbox = None
     
     try:
         # Get existing sandbox record (created in create-sandbox endpoint)
@@ -240,6 +258,8 @@ async def create_sandbox_internal(request: dict):
         if not db_sandbox:
             print(f"Warning: Sandbox record not found for {request['provider_object_id']}")
             return
+        
+        print(f"Processing sandbox: {request['sandbox_id']}")
         
         workspace_path = WORKSPACES_DIR / request["sandbox_id"]
         workspace_path.mkdir(parents=True, exist_ok=True)
@@ -272,9 +292,11 @@ async def create_sandbox_internal(request: dict):
         db_sandbox.env_vars = env_vars
         db.commit()
         
-        print(f"Sandbox created: {request['sandbox_id']}")
+        print(f"Sandbox created successfully: {request['sandbox_id']}")
     except Exception as e:
         print(f"Error creating sandbox: {e}")
+        import traceback
+        traceback.print_exc()
         if db_sandbox:
             db_sandbox.status = "failed"
             db_sandbox.updated_at = datetime.now()
