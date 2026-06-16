@@ -193,13 +193,16 @@ class SandboxInfo:
     tunnel_urls: Optional[Dict] = None
 
 
-# Job queue for sandbox operations
-sandbox_queue = asyncio.Queue(maxsize=100)
+# Job queue for sandbox operations (initialized in lifespan)
+sandbox_queue = None
 active_sandboxes = set()
 
 
 async def process_queue():
     """Process sandbox creation requests from the queue."""
+    global sandbox_queue
+    sandbox_queue = asyncio.Queue(maxsize=100)
+    
     while True:
         while len(active_sandboxes) >= MAX_CONCURRENT_SANDBOXES:
             await asyncio.sleep(1)
@@ -207,6 +210,8 @@ async def process_queue():
         request = await sandbox_queue.get()
         try:
             await execute_sandbox_creation(request)
+        except Exception as e:
+            print(f"Error processing sandbox creation: {e}")
         finally:
             sandbox_queue.task_done()
 
@@ -403,6 +408,10 @@ async def create_sandbox(
     db.add(db_sandbox)
     db.commit()
     
+    # Check if queue is initialized
+    if sandbox_queue is None:
+        raise HTTPException(status_code=503, detail="Service not ready, queue not initialized")
+    
     await sandbox_queue.put({
         "provider_object_id": provider_object_id,
         "session_id": request.session_id,
@@ -418,6 +427,8 @@ async def create_sandbox(
         "code_server_enabled": request.code_server_enabled,
         "agent_slack_notify_enabled": request.agent_slack_notify_enabled,
     })
+    
+    print(f"Sandbox request queued: {request.sandbox_id}")
     
     return {
         "success": True,
