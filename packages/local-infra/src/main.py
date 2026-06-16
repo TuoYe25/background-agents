@@ -25,6 +25,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, List, Dict
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Depends
@@ -128,15 +129,15 @@ class CreateSandboxRequest(BaseModel):
     sandbox_auth_token: str
     provider: str
     model: str
-    user_env_vars: dict | None = None
-    repo_image_id: str | None = None
-    repo_image_sha: str | None = None
+    user_env_vars: Optional[Dict] = None
+    repo_image_id: Optional[str] = None
+    repo_image_sha: Optional[str] = None
     timeout_seconds: int = SANDBOX_TIMEOUT_SECONDS
-    branch: str | None = None
+    branch: Optional[str] = None
     code_server_enabled: bool = False
     agent_slack_notify_enabled: bool = False
-    mcp_servers: list | None = None
-    sandbox_settings: dict | None = None
+    mcp_servers: Optional[List] = None
+    sandbox_settings: Optional[Dict] = None
 
 
 class RestoreSandboxRequest(BaseModel):
@@ -149,13 +150,13 @@ class RestoreSandboxRequest(BaseModel):
     repo_name: str
     provider: str
     model: str
-    user_env_vars: dict | None = None
+    user_env_vars: Optional[Dict] = None
     timeout_seconds: int = SANDBOX_TIMEOUT_SECONDS
-    branch: str | None = None
+    branch: Optional[str] = None
     code_server_enabled: bool = False
     agent_slack_notify_enabled: bool = False
-    mcp_servers: list | None = None
-    sandbox_settings: dict | None = None
+    mcp_servers: Optional[List] = None
+    sandbox_settings: Optional[Dict] = None
 
 
 class SnapshotRequest(BaseModel):
@@ -175,10 +176,10 @@ class SandboxInfo:
     provider_object_id: str
     status: str
     created_at: float
-    code_server_url: str | None = None
-    code_server_password: str | None = None
-    ttyd_url: str | None = None
-    tunnel_urls: dict | None = None
+    code_server_url: Optional[str] = None
+    code_server_password: Optional[str] = None
+    ttyd_url: Optional[str] = None
+    tunnel_urls: Optional[Dict] = None
 
 
 # Job queue for sandbox operations
