@@ -227,6 +227,15 @@ async def create_sandbox_internal(request: dict):
     db = SessionLocal()
     
     try:
+        # Get existing sandbox record (created in create-sandbox endpoint)
+        db_sandbox = db.query(SandboxDB).filter(
+            SandboxDB.provider_object_id == request["provider_object_id"]
+        ).first()
+        
+        if not db_sandbox:
+            print(f"Warning: Sandbox record not found for {request['provider_object_id']}")
+            return
+        
         workspace_path = WORKSPACES_DIR / request["sandbox_id"]
         workspace_path.mkdir(parents=True, exist_ok=True)
         
@@ -251,23 +260,20 @@ async def create_sandbox_internal(request: dict):
             
             await start_sandbox_runtime(workspace_path, env_vars)
         
-        db_sandbox = SandboxDB(
-            id=str(uuid.uuid4()),
-            provider_object_id=request["provider_object_id"],
-            session_id=request["session_id"],
-            sandbox_id=request["sandbox_id"],
-            repo_owner=request["repo_owner"],
-            repo_name=request["repo_name"],
-            status="running",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            workspace_path=str(workspace_path),
-            env_vars=env_vars,
-        )
-        db.add(db_sandbox)
+        # Update existing record
+        db_sandbox.status = "running"
+        db_sandbox.updated_at = datetime.now()
+        db_sandbox.workspace_path = str(workspace_path)
+        db_sandbox.env_vars = env_vars
         db.commit()
         
         print(f"Sandbox created: {request['sandbox_id']}")
+    except Exception as e:
+        print(f"Error creating sandbox: {e}")
+        if db_sandbox:
+            db_sandbox.status = "failed"
+            db_sandbox.updated_at = datetime.now()
+            db.commit()
     finally:
         db.close()
 
